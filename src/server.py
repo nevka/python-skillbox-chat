@@ -15,12 +15,6 @@ from twisted.protocols.basic import LineOnlyReceiver
 class ServerProtocol(LineOnlyReceiver):
     factory: 'Server'
     login: str = None
-    logins: list = []
-    history_list: list = []
-
-    def connectionMade(self):
-        # Потенциальный баг для внимательных =)
-        self.factory.clients.append(self)
 
     def connectionLost(self, reason=connectionDone):
         self.factory.clients.remove(self)
@@ -30,46 +24,48 @@ class ServerProtocol(LineOnlyReceiver):
 
         if self.login is not None:
             content = f"Message from {self.login}: {content}"
-            self.add_history(content)
+
+            self.factory.history.append(content)
+
             for user in self.factory.clients:
-                if user is not self:
-                    user.sendLine(content.encode())
+                user.sendLine(content.encode())
         else:
             # login:admin -> admin
             if content.startswith("login:"):
-                self.login = content.replace("login:", "")
-                if self.login:
-                    if self.login in self.logins:
-                        # кириллица на windows 10 кракозябры показывает, поэтому...
-                        self.sendLine(f"This login {self.login} used".encode())
-                    else:
-                        self.send_history()
-                        self.logins.append(self.login)
-                        self.sendLine(f"Welcome {self.login}!".encode())
+                login = content.replace("login:", "")
+
+                for user in self.factory.clients:
+                    if user.login == login:
+                        self.sendLine("Login already exists! Try another one".encode())
+                        return
+
+                self.login = login
+                self.factory.clients.append(self)
+                self.factory.send_history(self)
             else:
                 self.sendLine("Invalid login".encode())
-
-    def send_history(self):
-        if self.history_list:
-            for msg in self.history_list:
-                self.sendLine(msg.encode())
-
-    def add_history(self, msg):
-        if len(self.history_list) >= 10:
-            del self.history_list[0]
-        self.history_list.append(msg)
 
 
 class Server(ServerFactory):
     protocol = ServerProtocol
     clients: list
+    history: list
 
     def startFactory(self):
         self.clients = []
+        self.history = []
         print("Server started")
 
     def stopFactory(self):
         print("Server closed")
+
+    def send_history(self, client: ServerProtocol):
+        client.sendLine("Welcome!".encode())
+
+        last_messages = self.history[-10:]
+
+        for msg in last_messages:
+            client.sendLine(msg.encode())
 
 
 reactor.listenTCP(1234, Server())
