@@ -14,5 +14,5 @@ python-dotenv==0.10.3
 pywin32==227
 qt5reactor==0.5
 six==1.13.0
-Twisted==19.10.0
+Twisted==22.1.0
 zope.interface==4.7.1
